@@ -19,43 +19,44 @@ class App extends Component {
       categoryData: [],
       selectedBusiness: false,
       mapCenter: {
-        latitude: 37.78755,
-        longitude: -122.40112,
-        radius: 0.5,
-        zoom: 16
+        latitude: 43.295299,
+        longitude: 5.373871,
+        radius: 2,
+        zoom: 13
       },
       startAddress: "",
       endAddress: "",
       pois: [],
       helpText: [
-        "Drag me to search for places of interest to visit!",
-        "Select two places to route between them!"
+        "Déplace moi pour chercher des points d'interêts à visiter!",
+        "Choisis deux places à relier par un itinéraire!"
       ],
       debugMode: {debugRouting: false, debugPolygons: false},
       regionPolygons: [],
       filterRegion: {},
       regionId: 0,
-      routeMode: "shortestpath"
+      routeMode: "shortestpath",
+      viewMode: "streets-v9"
     };
     this.regionsNY = {
-      "manhattan": {"name": "Manhattan", id: 8398124},
-      "brooklyn": {"name": "Brooklyn", id: 369518},
-      "queens": {"name": "Queens", id: 369519},
-      "bronx": {"name": "The Bronx", id: 2552450},
-      "staten": {"name": "Staten Island", id: 962876}
+      // "manhattan": {"name": "Manhattan", id: 8398124},
+      // "brooklyn": {"name": "Brooklyn", id: 369518},
+      // "queens": {"name": "Queens", id: 369519},
+      // "bronx": {"name": "The Bronx", id: 2552450},
+      // "staten": {"name": "Staten Island", id: 962876}
     };
     this.regions = {
-      "corte_madera": {"name": "Corte Madera", id: 1260313},
-      "mill_valley": {"name": "Mill Valley", id: 112703},
-      "tiburon": {"name": "Tiburon", id: 2829690},
-      "belvedere": {"name": "Belvedere", id: 2829688},
-      "sausalito": {"name": "Sausalito", id: 2829689},
-      "san_francisco": {"name": "San Francisco", id: 111968},
-      "daly_city": {"name": "Daly City", id: 112271},
-      "brisbane": {"name": "Brisbane", id: 2834528},
-      "south_san_francisco": {"name": "South San Francisco", id: 2834558},
-      "hillsborough": {"name": "Hillsborough", id: 112285},
-      "san_mateo": {"name": "San Mateo", id: 2835017}
+      // "corte_madera": {"name": "Corte Madera", id: 1260313},
+      // "mill_valley": {"name": "Mill Valley", id: 112703},
+      // "tiburon": {"name": "Tiburon", id: 2829690},
+      // "belvedere": {"name": "Belvedere", id: 2829688},
+      // "sausalito": {"name": "Sausalito", id: 2829689},
+      // "san_francisco": {"name": "San Francisco", id: 111968},
+      // "daly_city": {"name": "Daly City", id: 112271},
+      // "brisbane": {"name": "Brisbane", id: 2834528},
+      // "south_san_francisco": {"name": "South San Francisco", id: 2834558},
+      // "hillsborough": {"name": "Hillsborough", id: 112285},
+      // "san_mateo": {"name": "San Mateo", id: 2835017}
     };
     this.driver = neo4j.driver(
       process.env.REACT_APP_NEO4J_URI,
@@ -107,6 +108,17 @@ class App extends Component {
         routeMode: value
       },
       () => console.log(this.state.routeMode)
+    );
+  };
+
+  handleViewChange = event => {
+    const target = event.target;
+    const value = target.value;
+    this.setState(
+      {
+        viewMode: value
+      },
+      () => console.log(this.state.viewMode)
     );
   };
 
@@ -214,7 +226,9 @@ class App extends Component {
     } else {
       query = `MATCH (p:PointOfInterest)
         WHERE distance(p.location, point({latitude: $lat, longitude:$lon})) < ($radius * 1000)
-      RETURN p`;
+        RETURN p`;
+        //-[:TAGS]->(o:OSMTags)
+        // WITH p{ .*, amenity : o.amenity}
     }
     session
       .run(query, {
@@ -224,8 +238,9 @@ class App extends Component {
         regionId: this.state.regionId
       })
       .then(result => {
-        console.log(result);
+        //console.log(result);
         const pois = result.records.map(r => r.get("p"));
+        console.log(pois);
         this.setState({ pois });
         session.close();
       })
@@ -350,7 +365,7 @@ class App extends Component {
             <div className="row tools">
               <div className="col-sm-2">
                 <div className="tool radius">
-                  <h5>Query Radius</h5>
+                  <h5>Rayon de requête</h5>
                   <input
                     type="number"
                     id="radius-value"
@@ -399,12 +414,12 @@ class App extends Component {
 
               <div className="col-sm-2">
                 <div className="tool timeframe">
-                  <h5>Start POI</h5>
+                  <h5>Début POI</h5>
                   <input
                     type="text"
                     id="address-start"
                     className="form-control"
-                    placeholder="Start address"
+                    placeholder="Adresse de début"
                     value={this.state.startAddress}
                     onChange={this.dateChange}
                   />
@@ -413,12 +428,12 @@ class App extends Component {
 
               <div className="col-sm-2">
                 <div className="tool timeframe">
-                  <h5>End POI</h5>
+                  <h5>Fin POI</h5>
                   <input
                     type="text"
                     id="address-end"
                     className="form-control"
-                    placeholder="End address"
+                    placeholder="Adresse de fin"
                     value={this.state.endAddress}
                     onChange={this.dateChange}
                   />
@@ -433,12 +448,89 @@ class App extends Component {
               <div className="col-sm-4" />
               <div className="col-sm-4" />
             </div>
+
+            <div className="row">
+              <div className="col-sm-4" />
+              <div className="col-sm-4" />
+            </div>
+            <div className="row">
+              <div className="col-sm-4" />
+              <div className="col-sm-4" />
+            </div>
+
           </form>
         </div>
+
+        <div id='menu'>
+                <h2>Affichage :</h2>
+                <fieldset>
+                <div>
+                  <input
+                    type="radio"
+                    id="streets-v9"
+                    name="rtoggle"
+                    value="streets-v9"
+                    checked={this.state.viewMode === "streets-v9"}
+                    onChange={this.handleViewChange}
+                  />
+                  <label>Rues</label>
+                </div>
+
+                <div>
+                  <input
+                    type="radio"
+                    id="light-v9"
+                    name="rtoggle"
+                    value="light-v9"
+                    checked={this.state.viewMode === "light-v9"}
+                    onChange={this.handleViewChange}
+                  />
+                  <label>Clair</label>
+                </div>
+
+                <div>
+                  <input
+                    type="radio"
+                    id="dark-v9"
+                    name="rtoggle"
+                    value="dark-v9"
+                    checked={this.state.viewMode === "dark-v9"}
+                    onChange={this.handleViewChange}
+                  />
+                  <label>Sombre</label>
+                </div>
+
+                <div>
+                  <input
+                    type="radio"
+                    id="outdoors-v9"
+                    name="rtoggle"
+                    value="outdoors-v9"
+                    checked={this.state.viewMode === "outdoors-v9"}
+                    onChange={this.handleViewChange}
+                  />
+                  <label>Extérieurs</label>
+                </div>
+
+                <div>
+                  <input
+                    type="radio"
+                    id="satellite-v9"
+                    name="rtoggle"
+                    value="satellite-v9"
+                    checked={this.state.viewMode === "satellite-v9"}
+                    onChange={this.handleViewChange}
+                  />
+                  <label>Satellite</label>
+                </div>
+
+                </fieldset>
+              </div>
+
         <div id="app-left-side-panel">
-          <h2>Filter Region</h2>
-          {this.createRegionCheckboxes()}
-          <h2>Route Algorithm</h2>
+          {/* <h2>Filter Region</h2> */}
+          {/* {this.createRegionCheckboxes()} */}
+          <h2>Algorithme</h2>
           <div className="row">
             <fieldset>
               <div>
@@ -450,7 +542,7 @@ class App extends Component {
                   checked={this.state.routeMode === "shortestpath"}
                   onChange={this.handleRouteChange}
                 />
-                <label>Shortest Path</label>
+                <label>Chemin le + court</label>
               </div>
 
               <div>
@@ -465,7 +557,7 @@ class App extends Component {
                 <label>Dijkstra</label>
               </div>
 
-              <div>
+              {/* <div>
                 <input
                   type="radio"
                   id="astar"
@@ -474,8 +566,8 @@ class App extends Component {
                   checked={this.state.routeMode === "astar"}
                   onChange={this.handleRouteChange}
                 />
-                <label>A*</label>
-              </div>
+                <label>Astar</label>
+              </div> */}
             </fieldset>
           </div>
           <h2>Options</h2>
@@ -486,9 +578,9 @@ class App extends Component {
               checked={this.state.debugMode.debugRouting}
               onChange={this.handleDebugChange}
             />
-            Debug Routing
+            Graph de route
           </div>
-          <div className="row">
+          {/* <div className="row">
             <input
               type="checkbox"
               name="debugPolygons"
@@ -496,7 +588,7 @@ class App extends Component {
               onChange={this.handleDebugChange}
             />
             Debug Polygons
-          </div>
+          </div> */}
         </div>
 
         <div>
@@ -514,6 +606,7 @@ class App extends Component {
               driver={this.driver}
               debugMode={this.state.debugMode}
               routeMode={this.state.routeMode}
+              viewMode={this.state.viewMode}
               helpText={this.state.helpText}
             />
           </div>

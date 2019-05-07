@@ -3,6 +3,11 @@ import mapboxgl from "mapbox-gl";
 
 mapboxgl.accessToken = process.env.REACT_APP_MAPBOX_TOKEN;
 
+var popup = new mapboxgl.Marker({ color: "black", zIndexOffset: 9999 });
+var selected_start = new mapboxgl.Marker({ color: "green", zIndexOffset: 9999 });
+var selected_end = new mapboxgl.Marker({ color: "red", zIndexOffset: 9999 });
+var style;
+
 class Map extends Component {
   constructor(props) {
     super(props);
@@ -323,6 +328,7 @@ class Map extends Component {
           title: "",
           id: p.node_osm_id.toString(),
           name: p.name,
+          amenity: p.amenity,
           icon: "monument",
           "marker-color": "#fc4353"
         }
@@ -397,11 +403,14 @@ class Map extends Component {
   }
 
   fetchRouteFor(startPOI, endPOI) {
+    console.log("1) "+startPOI);
+    console.log("2) "+endPOI);
     const session = this.props.driver.session();
 
     let query;
 
     if (this.props.routeMode === "shortestpath") {
+      this.map.setPaintProperty("lines","line-color","purple");
       query = `
     MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
     MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
@@ -410,6 +419,7 @@ class Map extends Component {
     RETURN COLLECT([n.location.longitude,n.location.latitude]) AS route
     `;
     } else if (this.props.routeMode === "dijkstra") {
+      this.map.setPaintProperty("lines","line-color","red");
       query = `
       MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
       MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
@@ -419,6 +429,7 @@ class Map extends Component {
       `
 
     } else if (this.props.routeMode === "astar") {
+      this.map.setPaintProperty("lines","line-color","yellow");
       query = `
       MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
       MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
@@ -449,6 +460,8 @@ class Map extends Component {
       })
       .then(result => {
         console.log(result);
+        console.log('ici');
+        console.log(result.records[0].get("route")[Math.round(result.records[0].get("route").length/2)]);
         this.routeGeojson.features[0].geometry.coordinates = result.records[0].get("route");
         this.map.getSource("routeGeojson").setData(this.routeGeojson);
       })
@@ -461,6 +474,7 @@ class Map extends Component {
   }
 
   componentDidUpdate() {
+
     this.setStartMarker();
 
     if (this.mapLoaded) {
@@ -472,18 +486,24 @@ class Map extends Component {
             this.props.mapCenter.radius
           ).data
         );
-      this.setRegionPolygons();
-      this.setBusinessMarkers();
-      this.fetchRoute();
+
+      if(style!==this.props.viewMode){
+        this.componentDidMount();
+      }else{
+        this.setRegionPolygons();
+        this.setBusinessMarkers();
+        this.fetchRoute();
+      };
     }
   }
 
   componentDidMount() {
+    style = this.props.viewMode;
     const { lng, lat, zoom } = this.state;
 
     this.map = new mapboxgl.Map({
       container: this.mapContainer,
-      style: "mapbox://styles/mapbox/streets-v9",
+      style: "mapbox://styles/mapbox/"+this.props.viewMode,
       center: [lng, lat],
       zoom
     });
@@ -500,8 +520,8 @@ class Map extends Component {
         source: "polygon",
         layout: {},
         paint: {
-          "fill-color": "blue",
-          "fill-opacity": 0.6
+          "fill-color": "black",
+          "fill-opacity": 0.2
         }
       });
 
@@ -514,6 +534,7 @@ class Map extends Component {
         type: "geojson",
         data: this.routeGeojson
       });
+      
 
       this.map.addSource("debugIntersectionRoutes", {
         type: "geojson",
@@ -615,25 +636,25 @@ class Map extends Component {
         filter: ["in", "$type", "LineString"]
       });
 
-      this.map.addLayer({
-        id: "start",
-        type: "circle",
-        source: "startGeojson",
-        paint: {
-          "circle-radius": 12,
-          "circle-color": "green"
-        }
-      });
+      // this.map.addLayer({
+      //   id: "start",
+      //   type: "circle",
+      //   source: "startGeojson",
+      //   paint: {
+      //     "circle-radius": 12,
+      //     "circle-color": "green"
+      //   }
+      // });
 
-      this.map.addLayer({
-        id: "end",
-        type: "circle",
-        source: "endGeojson",
-        paint: {
-          "circle-radius": 12,
-          "circle-color": "red"
-        }
-      });
+      // this.map.addLayer({
+      //   id: "end",
+      //   type: "circle",
+      //   source: "endGeojson",
+      //   paint: {
+      //     "circle-radius": 12,
+      //     "circle-color": "red"
+      //   }
+      // });
 
       this.map.addLayer({
         id: "points",
@@ -645,7 +666,7 @@ class Map extends Component {
         },
         filter: ["in", "$type", "Point"]
       });
-
+      
       this.map.addLayer({
         id: "lines",
         type: "line",
@@ -656,16 +677,33 @@ class Map extends Component {
         },
         paint: {
           "line-color": "purple",
-          "line-width": 10
+          "line-width": 5,
+          "line-opacity": 0.6
         },
         filter: ["in", "$type", "LineString"]
       });
 
       this.map.on("mousemove", e => {
+        
         var features = this.map.queryRenderedFeatures(e.point, {
           layers: ["points"]
         });
-        // UI indicator for clicking/hovering a point on the map
+        
+        if(features.length !== 0){
+          popup.setLngLat(features[0].geometry.coordinates)
+          .addTo(this.map)
+          .setPopup(
+            new mapboxgl.Popup().setHTML(`${features[0].properties.name}, ${features[0].properties.amenity}`)
+          )
+          .setDraggable(true)
+          .on("dragend", onDragEnd)
+          .addTo(this.map)
+          .togglePopup();
+          } else{
+            popup.remove();
+          };
+
+       // UI indicator for clicking/hovering a point on the map
         this.map.getCanvas().style.cursor = features.length
           ? "pointer"
           : "crosshair";
@@ -686,7 +724,10 @@ class Map extends Component {
         console.log("Location:");
         console.log(coordinates);
 
+
         if (this.selectingStart) {
+          selected_start.setLngLat([coordinates[0], coordinates[1]])
+          .addTo(this.map);
           this.startAddress = name;
           this.startPOI = feature.properties.id;
           this.selectingStart = false;
@@ -711,6 +752,8 @@ class Map extends Component {
           this.map.getSource("routeGeojson").setData(this.routeGeojson);
           this.props.setStartAddress(name);
         } else {
+          selected_end.setLngLat([coordinates[0], coordinates[1]])
+          .addTo(this.map);
           this.endAddress = name;
           this.endPOI = feature.properties.id;
           this.endGeojson.features = [
@@ -809,7 +852,7 @@ class Map extends Component {
       }
     };
 
-    new mapboxgl.Marker({ color: "red", zIndexOffset: 9999 })
+    new mapboxgl.Marker({ color: "blue", zIndexOffset: 9999 })
       .setLngLat([lng, lat])
       .addTo(this.map)
       .setPopup(
