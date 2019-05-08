@@ -6,6 +6,8 @@ mapboxgl.accessToken = process.env.REACT_APP_MAPBOX_TOKEN;
 var popup = new mapboxgl.Marker({ color: "black", zIndexOffset: 9999 });
 var selected_start = new mapboxgl.Marker({ color: "green", zIndexOffset: 9999 });
 var selected_end = new mapboxgl.Marker({ color: "red", zIndexOffset: 9999 });
+var distance = new mapboxgl.Popup({closeOnClick: true});
+var icon;
 var style;
 
 class Map extends Component {
@@ -416,7 +418,8 @@ class Map extends Component {
     MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
     MATCH p=shortestPath((a)-[:ROUTE*..200]-(b))
     UNWIND nodes(p) AS n
-    RETURN COLLECT([n.location.longitude,n.location.latitude]) AS route
+    WITH n, extract(dist IN relationships(p)| dist.distance) AS extracted
+    RETURN COLLECT([n.location.longitude,n.location.latitude]) AS route,apoc.coll.sum(extracted)
     `;
     } else if (this.props.routeMode === "dijkstra") {
       this.map.setPaintProperty("lines","line-color","red");
@@ -425,7 +428,7 @@ class Map extends Component {
       MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
       CALL apoc.algo.dijkstra(a,b,'ROUTE', 'distance') YIELD path, weight
       UNWIND nodes(path) AS n
-      RETURN COLLECT([n.location.longitude, n.location.latitude]) AS route
+      RETURN COLLECT([n.location.longitude, n.location.latitude]) AS route,weight
       `
 
     } else if (this.props.routeMode === "astar") {
@@ -435,7 +438,7 @@ class Map extends Component {
       MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
       CALL apoc.algo.aStar(a, b, 'ROUTE', 'distance', 'lat', 'lon') YIELD path, weight
       UNWIND nodes(path) AS n
-      RETURN COLLECT([n.location.longitude, n.location.latitude]) AS route
+      RETURN COLLECT([n.location.longitude, n.location.latitude]) AS route,weight
       `
     } else {
       // default query, use if
@@ -460,8 +463,27 @@ class Map extends Component {
       })
       .then(result => {
         console.log(result);
-        console.log('ici');
-        console.log(result.records[0].get("route")[Math.round(result.records[0].get("route").length/2)]);
+        var moitie = result.records[0].get("route")[Math.round(result.records[0].get("route").length/2)];
+        if(this.props.routeMode === "shortestpath"){
+          var somme = this.routeGeojson.features[0].geometry.coordinates = result.records[0].get("apoc.coll.sum(extracted)");
+          if(somme>=1000){
+            somme = (somme/1000).toFixed(2);
+            distance.setLngLat([moitie[0], moitie[1]]).setHTML('<h2>Distance : '+somme+'km </h2>').addTo(this.map);
+          }else{
+            somme = Math.round(somme); 
+            distance.setLngLat([moitie[0], moitie[1]]).setHTML('<h2>Distance : '+somme+'m </h2>').addTo(this.map);
+          }
+        }else{
+          var somme = this.routeGeojson.features[0].geometry.coordinates = result.records[0].get("weight");
+          if(somme>=1000){
+            somme = (somme/1000).toFixed(2);
+            distance.setLngLat([moitie[0], moitie[1]]).setHTML('<h2>Distance : '+somme+'km </h2>').addTo(this.map);
+          }else{
+            somme = Math.round(somme); 
+            distance.setLngLat([moitie[0], moitie[1]]).setHTML('<h2>Distance : '+somme+'m </h2>').addTo(this.map);
+          }
+        }
+        
         this.routeGeojson.features[0].geometry.coordinates = result.records[0].get("route");
         this.map.getSource("routeGeojson").setData(this.routeGeojson);
       })
@@ -656,16 +678,26 @@ class Map extends Component {
       //   }
       // });
 
+      // this.map.addLayer({
+      //   id: "points",
+      //   type: "circle",
+      //   source: "geojson",
+      //   paint: {
+      //     "circle-radius": 5,
+      //     "circle-color": "#000"
+      //   },
+      //   filter: ["in", "$type", "Point"]
+      // });
+
       this.map.addLayer({
-        id: "points",
-        type: "circle",
+        "id": "points",
+        "type": "symbol",
         source: "geojson",
-        paint: {
-          "circle-radius": 5,
-          "circle-color": "#000"
-        },
-        filter: ["in", "$type", "Point"]
-      });
+        "layout": {
+        "icon-image": "{amenity}-15"
+        }
+        });
+        
       
       this.map.addLayer({
         id: "lines",

@@ -557,7 +557,7 @@ class App extends Component {
                 <label>Dijkstra</label>
               </div>
 
-              {/* <div>
+              <div>
                 <input
                   type="radio"
                   id="astar"
@@ -567,7 +567,7 @@ class App extends Component {
                   onChange={this.handleRouteChange}
                 />
                 <label>Astar</label>
-              </div> */}
+              </div>
             </fieldset>
           </div>
           <h2>Options</h2>
