@@ -4,10 +4,10 @@ import mapboxgl from "mapbox-gl";
 mapboxgl.accessToken = process.env.REACT_APP_MAPBOX_TOKEN;
 
 var popup = new mapboxgl.Marker({ color: "black", zIndexOffset: 9999 });
+var wait = new mapboxgl.Popup({closeOnClick: false});
 var selected_start = new mapboxgl.Marker({ color: "green", zIndexOffset: 9999 });
 var selected_end = new mapboxgl.Marker({ color: "red", zIndexOffset: 9999 });
 var distance = new mapboxgl.Popup({closeOnClick: true});
-var icon;
 var style;
 
 class Map extends Component {
@@ -21,6 +21,20 @@ class Map extends Component {
 
     this.businessMarkers = [];
     this.mapLoaded = false;
+    this.cestunpoint = false;
+
+    this.pointcreated = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: {
+            type: "Point",
+            coordinates: []
+          }
+        }
+      ]
+    };
 
     this.geojson = {
       type: "FeatureCollection",
@@ -414,8 +428,8 @@ class Map extends Component {
     if (this.props.routeMode === "shortestpath") {
       this.map.setPaintProperty("lines","line-color","purple");
       query = `
-    MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
-    MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+    MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
+    MATCH (b:OSMNode) WHERE b.node_osm_id = toInteger($endPOI)
     MATCH p=shortestPath((a)-[:ROUTE*..200]-(b))
     UNWIND nodes(p) AS n
     WITH n, extract(dist IN relationships(p)| dist.distance) AS extracted
@@ -424,8 +438,8 @@ class Map extends Component {
     } else if (this.props.routeMode === "dijkstra") {
       this.map.setPaintProperty("lines","line-color","red");
       query = `
-      MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
-      MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+      MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
+      MATCH (b:OSMNode) WHERE b.node_osm_id = toInteger($endPOI)
       CALL apoc.algo.dijkstra(a,b,'ROUTE', 'distance') YIELD path, weight
       UNWIND nodes(path) AS n
       RETURN COLLECT([n.location.longitude, n.location.latitude]) AS route,weight
@@ -434,8 +448,8 @@ class Map extends Component {
     } else if (this.props.routeMode === "astar") {
       this.map.setPaintProperty("lines","line-color","yellow");
       query = `
-      MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
-      MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+      MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
+      MATCH (b:OSMNode) WHERE b.node_osm_id = toInteger($endPOI)
       CALL apoc.algo.aStar(a, b, 'ROUTE', 'distance', 'lat', 'lon') YIELD path, weight
       UNWIND nodes(path) AS n
       RETURN COLLECT([n.location.longitude, n.location.latitude]) AS route,weight
@@ -443,8 +457,8 @@ class Map extends Component {
     } else {
       // default query, use if
       query = `
-    MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
-    MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+    MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
+    MATCH (b:OSMNode) WHERE b.node_osm_id = toInteger($endPOI)
     MATCH p=shortestPath((a)-[:ROUTE*..200]-(b))
     UNWIND nodes(p) AS n
     RETURN COLLECT([n.location.longitude,n.location.latitude]) AS route
@@ -483,7 +497,6 @@ class Map extends Component {
             distance.setLngLat([moitie[0], moitie[1]]).setHTML('<h2>Distance : '+somme+'m </h2>').addTo(this.map);
           }
         }
-        
         this.routeGeojson.features[0].geometry.coordinates = result.records[0].get("route");
         this.map.getSource("routeGeojson").setData(this.routeGeojson);
       })
@@ -532,6 +545,7 @@ class Map extends Component {
 
     this.map.on("load", () => {
       this.mapLoaded = true;
+      this.map.doubleClickZoom.disable();
       this.map.addSource(
         "polygon",
         this.createGeoJSONCircle([lng, lat], this.props.mapCenter.radius)
@@ -678,16 +692,21 @@ class Map extends Component {
       //   }
       // });
 
-      // this.map.addLayer({
-      //   id: "points",
-      //   type: "circle",
-      //   source: "geojson",
-      //   paint: {
-      //     "circle-radius": 5,
-      //     "circle-color": "#000"
-      //   },
-      //   filter: ["in", "$type", "Point"]
-      // });
+      this.map.addSource("POIcreate", {
+        type: "geojson",
+        data: this.pointcreated
+      });
+
+      this.map.addLayer({
+        id: "pointcreate",
+        type: "circle",
+        source: "POIcreate",
+        paint: {
+          "circle-radius": 5,
+          "circle-color": "#000"
+        },
+        filter: ["in", "$type", "Point"]
+      });
 
       this.map.addLayer({
         "id": "points",
@@ -740,6 +759,86 @@ class Map extends Component {
           ? "pointer"
           : "crosshair";
       });
+
+      this.map.on("dblclick", e => {
+        this.pointcreated.features[0].geometry.coordinates = [e.lngLat.lng,e.lngLat.lat];
+        this.map.getSource("POIcreate").setData(this.pointcreated);
+        wait.setLngLat([e.lngLat.lng,e.lngLat.lat])
+        .setHTML('<h1>En attente de liaison au graph de route</h1>')
+        .addTo(this.map);
+        
+        const session = this.props.driver.session();
+
+        let query;
+    
+        query = `
+        MATCH (p1)-[:ROUTE]-()
+        WITH min(distance(p1.location, point({latitude: $latPOI, longitude: $lngPOI}))) AS shortest_distance
+        MATCH (p2:OSMNode)-[:ROUTE]-()
+        WHERE distance(p2.location, point({latitude: $latPOI, longitude: $lngPOI}))=shortest_distance
+        RETURN DISTINCT p2
+        `;
+        
+        console.log(this);
+        console.log(query);
+    
+        session
+          .run(query, {
+            latPOI: e.lngLat.lat,
+            lngPOI: e.lngLat.lng
+          })
+          .then(result => {
+            this.pointcreated.features[0].geometry.coordinates = [result.records[0]._fields[0].properties.lon,result.records[0]._fields[0].properties.lat];
+            this.map.getSource("POIcreate").setData(this.pointcreated);
+            wait.remove();
+            console.log(result.records[0]._fields[0].properties.lon,result.records[0]._fields[0].properties.node_osm_id);
+   
+            selected_start.setLngLat([result.records[0]._fields[0].properties.lon,result.records[0]._fields[0].properties.lat])
+            .addTo(this.map);
+            this.pointcreated = {
+              type: "FeatureCollection",
+              features: [
+                {
+                  type: "Feature",
+                  geometry: {
+                    type: "Point",
+                    coordinates: []
+                  }
+                }
+              ]
+            };
+            this.map.getSource("POIcreate").setData(this.pointcreated);
+            this.startAddress = 'Adresse perso';
+            this.startPOI = result.records[0]._fields[0].properties.node_osm_id;
+            this.selectingStart = false;
+            this.routeGeojson.features[0].geometry.coordinates = [];
+            this.startGeojson.features = [
+              {
+                type: "Feature",
+                geometry: {
+                  type: "Point",
+                  coordinates: [result.records[0]._fields[0].properties.lon,result.records[0]._fields[0].properties.lat]
+                },
+                properties: {
+                  title: "",
+                  name: 'Adresse perso',
+                  id: 'Adresse perso',
+                  icon: "monument",
+                  "marker-color": "#fc4353"
+                }
+              }
+            ];
+            this.map.getSource("startGeojson").setData(this.startGeojson);
+            this.map.getSource("routeGeojson").setData(this.routeGeojson);
+            this.props.setStartAddress('Adresse perso');
+            })
+          .catch(error => {
+            console.log(error);
+          })
+          .finally(() => {
+            session.close();
+          });
+        });
 
       this.map.on("click", "points", e => {
         console.log(e);

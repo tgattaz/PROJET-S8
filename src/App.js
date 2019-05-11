@@ -500,7 +500,7 @@ class App extends Component {
                   <label>Sombre</label>
                 </div>
 
-                <div>
+                {/* <div>
                   <input
                     type="radio"
                     id="outdoors-v9"
@@ -510,7 +510,7 @@ class App extends Component {
                     onChange={this.handleViewChange}
                   />
                   <label>Extérieurs</label>
-                </div>
+                </div> */}
 
                 <div>
                   <input
