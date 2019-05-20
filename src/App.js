@@ -1,4 +1,4 @@
-import React, { Component } from "react";
+ import React, { Component } from "react";
 import "./App.css";
 import Map from "./components/Map";
 import neo4j from "neo4j-driver/lib/browser/neo4j-web";
@@ -548,6 +548,18 @@ class App extends Component {
               <div>
                 <input
                   type="radio"
+                  id="shortestpath-details"
+                  name="shortestpath-details"
+                  value="shortestpath-details"
+                  checked={this.state.routeMode === "shortestpath-details"}
+                  onChange={this.handleRouteChange}
+                />
+                <label>Chemin le + court détails</label>
+              </div>
+
+              <div>
+                <input
+                  type="radio"
                   id="dijkstra"
                   name="dijkstra"
                   value="dijkstra"
@@ -555,6 +567,18 @@ class App extends Component {
                   onChange={this.handleRouteChange}
                 />
                 <label>Dijkstra</label>
+              </div>
+
+              <div>
+                <input
+                  type="radio"
+                  id="dijkstra-details"
+                  name="dijkstra-details"
+                  value="dijkstra-details"
+                  checked={this.state.routeMode === "dijkstra-details"}
+                  onChange={this.handleRouteChange}
+                />
+                <label>Dijkstra détails</label>
               </div>
 
               <div>
@@ -568,6 +592,19 @@ class App extends Component {
                 />
                 <label>Astar</label>
               </div>
+
+              <div>
+                <input
+                  type="radio"
+                  id="astar-details"
+                  name="astar-details"
+                  value="astar-details"
+                  checked={this.state.routeMode === "astar-details"}
+                  onChange={this.handleRouteChange}
+                />
+                <label>Astar détails</label>
+              </div>
+
             </fieldset>
           </div>
           <h2>Options</h2>

@@ -424,49 +424,192 @@ class Map extends Component {
     const session = this.props.driver.session();
 
     let query;
-
-    if (this.props.routeMode === "shortestpath") {
-      this.map.setPaintProperty("lines","line-color","purple");
-      query = `
-    MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
-    MATCH (b:OSMNode) WHERE b.node_osm_id = toInteger($endPOI)
-    MATCH p=shortestPath((a)-[:ROUTE*..200]-(b))
-    UNWIND nodes(p) AS n
-    WITH n, extract(dist IN relationships(p)| dist.distance) AS extracted
-    RETURN COLLECT([n.location.longitude,n.location.latitude]) AS route,apoc.coll.sum(extracted)
-    `;
-    } else if (this.props.routeMode === "dijkstra") {
-      this.map.setPaintProperty("lines","line-color","red");
-      query = `
+    if (this.startGeojson.features[0].properties.id=="Adresse perso"){
+      if (this.props.routeMode === "shortestpath") {
+        this.map.setPaintProperty("lines","line-color","purple");
+        query = `
+        MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
+        MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+        MATCH p=shortestPath((a)-[:ROUTE*..200]-(b))
+        UNWIND nodes(p) AS n
+        WITH n, extract(dist IN relationships(p)| dist.distance) AS extracted
+        WITH n, apoc.coll.sum(extracted) AS weight
+        RETURN COLLECT([n.location.longitude,n.location.latitude]) AS route,weight
+        `;
+      } else if (this.props.routeMode === "dijkstra") {
+        this.map.setPaintProperty("lines","line-color","red");
+        query = `
+        MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
+        MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+        CALL apoc.algo.dijkstra(a,b,'ROUTE', 'distance') YIELD path, weight
+        UNWIND nodes(path) AS n
+        RETURN COLLECT([n.location.longitude, n.location.latitude]) AS route,weight
+        `;
+  
+      } else if (this.props.routeMode === "astar") {
+        this.map.setPaintProperty("lines","line-color","yellow");
+        query = `
+        MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
+        MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+        CALL apoc.algo.aStar(a, b, 'ROUTE', 'distance', 'lat', 'lon') YIELD path, weight
+        UNWIND nodes(path) AS n
+        RETURN COLLECT([n.location.longitude, n.location.latitude]) AS route,weight
+        `;
+      } else if (this.props.routeMode === "shortestpath-details") {
+        this.map.setPaintProperty("lines","line-color","purple");
+        query = `
+        MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
+        MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+        MATCH p=shortestPath((a)-[:ROUTE*..200]-(b)) 
+        UNWIND relationships(p) as rel 
+        WITH rel,extract(dist IN relationships(p)| dist.distance) AS extracted
+        WITH rel,apoc.coll.sum(extracted) AS weight
+        MATCH (c:OSMWayNode)-[n1:NODE]-(),(d:OSMWayNode)-[n2:NODE]-() 
+        WHERE ID(n1)=rel.fromRel and ID(n2)=rel.toRel 
+        with c, d, weight
+        MATCH k=shortestPath((c)-[:NEXT*]-(d)) 
+        UNWIND NODES(k) as n 
+        MATCH (n)-[:NODE]-(z:OSMNode) 
+        return COLLECT([z.location.longitude,z.location.latitude]) as route,weight
+        `;   
+      } else if (this.props.routeMode === "dijkstra-details") {
+        this.map.setPaintProperty("lines","line-color","red");
+        query = `
+        MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
+        MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+        CALL apoc.algo.dijkstra(a,b,'ROUTE', 'distance') YIELD path, weight
+        UNWIND relationships(path) as rel 
+        WITH rel,weight
+        MATCH (c:OSMWayNode)-[n1:NODE]-(),(d:OSMWayNode)-[n2:NODE]-() 
+        WHERE ID(n1)=rel.fromRel and ID(n2)=rel.toRel 
+        with c, d, weight
+        MATCH k=shortestPath((c)-[:NEXT*]-(d)) 
+        UNWIND NODES(k) as n 
+        MATCH (n)-[:NODE]-(z:OSMNode) 
+        return COLLECT([z.location.longitude,z.location.latitude]) AS route,weight
+        `;
+      } else if (this.props.routeMode === "astar-details") {
+        this.map.setPaintProperty("lines","line-color","yellow");
+        query = `
+        MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
+        MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+        CALL apoc.algo.aStar(a, b, 'ROUTE', 'distance', 'lat', 'lon') YIELD path, weight
+        UNWIND relationships(path) as rel 
+        WITH rel,weight
+        MATCH (c:OSMWayNode)-[n1:NODE]-(),(d:OSMWayNode)-[n2:NODE]-() 
+        WHERE ID(n1)=rel.fromRel and ID(n2)=rel.toRel 
+        with c, d, weight
+        MATCH k=shortestPath((c)-[:NEXT*]-(d)) 
+        UNWIND NODES(k) as n 
+        MATCH (n)-[:NODE]-(z:OSMNode) 
+        return COLLECT([z.location.longitude,z.location.latitude]) AS route,weight
+        `;
+      } else {
+        // default query, use if
+        query = `
       MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
-      MATCH (b:OSMNode) WHERE b.node_osm_id = toInteger($endPOI)
-      CALL apoc.algo.dijkstra(a,b,'ROUTE', 'distance') YIELD path, weight
-      UNWIND nodes(path) AS n
-      RETURN COLLECT([n.location.longitude, n.location.latitude]) AS route,weight
-      `
+      MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+      MATCH p=shortestPath((a)-[:ROUTE*..200]-(b))
+      UNWIND nodes(p) AS n
+      RETURN COLLECT([n.location.longitude,n.location.latitude]) AS route
+      `;
+      }
+    }else{
+      if (this.props.routeMode === "shortestpath") {
+        this.map.setPaintProperty("lines","line-color","purple");
+        query = `
+        MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
+        MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+        MATCH p=shortestPath((a)-[:ROUTE*..200]-(b))
+        UNWIND nodes(p) AS n
+        WITH n, extract(dist IN relationships(p)| dist.distance) AS extracted
+        WITH n, apoc.coll.sum(extracted) AS weight
+        RETURN COLLECT([n.location.longitude,n.location.latitude]) AS route,weight
+        `;
+      } else if (this.props.routeMode === "dijkstra") {
+        this.map.setPaintProperty("lines","line-color","red");
+        query = `
+        MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
+        MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+        CALL apoc.algo.dijkstra(a,b,'ROUTE', 'distance') YIELD path, weight
+        UNWIND nodes(path) AS n
+        RETURN COLLECT([n.location.longitude, n.location.latitude]) AS route,weight
+        `;
+  
+      } else if (this.props.routeMode === "astar") {
+        this.map.setPaintProperty("lines","line-color","yellow");
+        query = `
+        MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
+        MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+        CALL apoc.algo.aStar(a, b, 'ROUTE', 'distance', 'lat', 'lon') YIELD path, weight
+        UNWIND nodes(path) AS n
+        RETURN COLLECT([n.location.longitude, n.location.latitude]) AS route,weight
+        `;
+      } else if (this.props.routeMode === "shortestpath-details") {
+        this.map.setPaintProperty("lines","line-color","purple");
+        query = `
+        MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
+        MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+        MATCH p=shortestPath((a)-[:ROUTE*..200]-(b)) 
+        UNWIND relationships(p) as rel 
+        WITH rel,extract(dist IN relationships(p)| dist.distance) AS extracted
+        WITH rel,apoc.coll.sum(extracted) AS weight
+        MATCH (c:OSMWayNode)-[n1:NODE]-(),(d:OSMWayNode)-[n2:NODE]-() 
+        WHERE ID(n1)=rel.fromRel and ID(n2)=rel.toRel 
+        with c, d, weight
+        MATCH k=shortestPath((c)-[:NEXT*]-(d)) 
+        UNWIND NODES(k) as n 
+        MATCH (n)-[:NODE]-(z:OSMNode) 
+        return COLLECT([z.location.longitude,z.location.latitude]) as route,weight
+        `;   
+      } else if (this.props.routeMode === "dijkstra-details") {
+        this.map.setPaintProperty("lines","line-color","red");
+        query = `
+        MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
+        MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+        CALL apoc.algo.dijkstra(a,b,'ROUTE', 'distance') YIELD path, weight
+        UNWIND relationships(path) as rel 
+        WITH rel,weight
+        MATCH (c:OSMWayNode)-[n1:NODE]-(),(d:OSMWayNode)-[n2:NODE]-() 
+        WHERE ID(n1)=rel.fromRel and ID(n2)=rel.toRel 
+        with c, d, weight
+        MATCH k=shortestPath((c)-[:NEXT*]-(d)) 
+        UNWIND NODES(k) as n 
+        MATCH (n)-[:NODE]-(z:OSMNode) 
+        return COLLECT([z.location.longitude,z.location.latitude]) AS route,weight
+        `;
+      } else if (this.props.routeMode === "astar-details") {
+        this.map.setPaintProperty("lines","line-color","yellow");
+        query = `
+        MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
+        MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+        CALL apoc.algo.aStar(a, b, 'ROUTE', 'distance', 'lat', 'lon') YIELD path, weight
+        UNWIND relationships(path) as rel 
+        WITH rel,weight
+        MATCH (c:OSMWayNode)-[n1:NODE]-(),(d:OSMWayNode)-[n2:NODE]-() 
+        WHERE ID(n1)=rel.fromRel and ID(n2)=rel.toRel 
+        with c, d, weight
+        MATCH k=shortestPath((c)-[:NEXT*]-(d)) 
+        UNWIND NODES(k) as n 
+        MATCH (n)-[:NODE]-(z:OSMNode) 
+        return COLLECT([z.location.longitude,z.location.latitude]) AS route,weight
+        `;
+      } else {
+        // default query, use if
+        query = `
+      MATCH (a:PointOfInterest) WHERE a.node_osm_id = toInteger($startPOI)
+      MATCH (b:PointOfInterest) WHERE b.node_osm_id = toInteger($endPOI)
+      MATCH p=shortestPath((a)-[:ROUTE*..200]-(b))
+      UNWIND nodes(p) AS n
+      RETURN COLLECT([n.location.longitude,n.location.latitude]) AS route
+      `;
+      }
+    };
 
-    } else if (this.props.routeMode === "astar") {
-      this.map.setPaintProperty("lines","line-color","yellow");
-      query = `
-      MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
-      MATCH (b:OSMNode) WHERE b.node_osm_id = toInteger($endPOI)
-      CALL apoc.algo.aStar(a, b, 'ROUTE', 'distance', 'lat', 'lon') YIELD path, weight
-      UNWIND nodes(path) AS n
-      RETURN COLLECT([n.location.longitude, n.location.latitude]) AS route,weight
-      `
-    } else {
-      // default query, use if
-      query = `
-    MATCH (a:OSMNode) WHERE a.node_osm_id = toInteger($startPOI)
-    MATCH (b:OSMNode) WHERE b.node_osm_id = toInteger($endPOI)
-    MATCH p=shortestPath((a)-[:ROUTE*..200]-(b))
-    UNWIND nodes(p) AS n
-    RETURN COLLECT([n.location.longitude,n.location.latitude]) AS route
-    `;
-    }
     
     console.log(this);
     console.log(query);
+    var start = new Date();
     session
       .run(query, {
         startPOI: startPOI,
@@ -476,26 +619,18 @@ class Map extends Component {
         routeCenterLon: this.routeViewport.longitude
       })
       .then(result => {
+        var end = new Date();
+        var diff = end-start;
+        console.log('temps de requête :' +diff);
         console.log(result);
         var moitie = result.records[0].get("route")[Math.round(result.records[0].get("route").length/2)];
-        if(this.props.routeMode === "shortestpath"){
-          var somme = this.routeGeojson.features[0].geometry.coordinates = result.records[0].get("apoc.coll.sum(extracted)");
-          if(somme>=1000){
-            somme = (somme/1000).toFixed(2);
-            distance.setLngLat([moitie[0], moitie[1]]).setHTML('<h2>Distance : '+somme+'km </h2>').addTo(this.map);
-          }else{
-            somme = Math.round(somme); 
-            distance.setLngLat([moitie[0], moitie[1]]).setHTML('<h2>Distance : '+somme+'m </h2>').addTo(this.map);
-          }
+        var somme = this.routeGeojson.features[0].geometry.coordinates = result.records[0].get("weight");
+        if(somme>=1000){
+          somme = (somme/1000).toFixed(2);
+          distance.setLngLat([moitie[0], moitie[1]]).setHTML('<h2>Distance : '+somme+'km </h2>').addTo(this.map);
         }else{
-          var somme = this.routeGeojson.features[0].geometry.coordinates = result.records[0].get("weight");
-          if(somme>=1000){
-            somme = (somme/1000).toFixed(2);
-            distance.setLngLat([moitie[0], moitie[1]]).setHTML('<h2>Distance : '+somme+'km </h2>').addTo(this.map);
-          }else{
-            somme = Math.round(somme); 
-            distance.setLngLat([moitie[0], moitie[1]]).setHTML('<h2>Distance : '+somme+'m </h2>').addTo(this.map);
-          }
+          somme = Math.round(somme); 
+          distance.setLngLat([moitie[0], moitie[1]]).setHTML('<h2>Distance : '+somme+'m </h2>').addTo(this.map);
         }
         this.routeGeojson.features[0].geometry.coordinates = result.records[0].get("route");
         this.map.getSource("routeGeojson").setData(this.routeGeojson);
@@ -770,6 +905,7 @@ class Map extends Component {
         const session = this.props.driver.session();
 
         let query;
+        let query2;
     
         query = `
         MATCH (p1)-[:ROUTE]-()
@@ -778,12 +914,20 @@ class Map extends Component {
         WHERE distance(p2.location, point({latitude: $latPOI, longitude: $lngPOI}))=shortest_distance
         RETURN DISTINCT p2
         `;
+
+        query2= `
+        MATCH (p1:OSMNode)-[:ROUTE]-() 
+        WITH distance(point({latitude: $latPOI, longitude:$lngPOI}), p1.location) as dist, p1 
+        ORDER BY dist ASC 
+        LIMIT 1
+        RETURN p1
+        `;
         
         console.log(this);
         console.log(query);
     
         session
-          .run(query, {
+          .run(query2, {
             latPOI: e.lngLat.lat,
             lngPOI: e.lngLat.lng
           })
